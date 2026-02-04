@@ -4,6 +4,7 @@ node_modules/
 # Build outputs
 dist/
 out/
+build/
 
 # Logs
 *.log
@@ -16,6 +17,7 @@ Thumbs.db
 # IDE
 .vscode/
 .idea/
+.claude/
 
 # Environment
 .env
@@ -27,8 +29,8 @@ nul
 # Playwright MCP
 .playwright-mcp/
 
-# Build folder
-build/
-
-# Icons source
+# Source icons (not needed, resources/ has final icons)
 icons/
+
+# Architecture spec (internal doc)
+architecture_spec.md
