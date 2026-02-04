@@ -1,0 +1,14 @@
+{
+  "enabledPlugins": {
+    "playwright@claude-plugins-official": true
+  },
+  "pluginConfigs": {
+    "playwright@claude-plugins-official": {
+      "mcpServers": {
+        "playwright": {
+          "browser": "firefox"
+        }
+      }
+    }
+  }
+}
