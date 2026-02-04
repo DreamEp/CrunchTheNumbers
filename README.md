@@ -17,14 +17,14 @@ A desktop application for sports coaches to track participants, sessions, and ac
 
 ## Download
 
-### Latest Release
+### Latest Release (v1.0.2)
 
 | Platform | Download |
 |----------|----------|
-| macOS (Intel + Apple Silicon) | [**Télécharger mac-app.zip**](https://nightly.link/DreamEp/CrunchTheNumbers/workflows/build/main/mac-app.zip) |
-| Windows | [**Télécharger windows-portable.zip**](https://nightly.link/DreamEp/CrunchTheNumbers/workflows/build/main/windows-portable.zip) |
+| macOS (Intel + Apple Silicon) | [**CrunchTheNumbers-1.0.0-universal.dmg**](https://github.com/DreamEp/CrunchTheNumbers/releases/download/v1.0.2/CrunchTheNumbers-1.0.0-universal.dmg) |
+| Windows | [GitHub Actions](https://github.com/DreamEp/CrunchTheNumbers/actions) (Artifacts) |
 
-> Les liens ci-dessus téléchargent automatiquement la dernière version compilée.
+[Voir toutes les releases](https://github.com/DreamEp/CrunchTheNumbers/releases)
 
 ## Installation
 
