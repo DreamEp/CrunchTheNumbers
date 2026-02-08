@@ -39,7 +39,7 @@ interface AppState {
   setCachedReport: (report: ReportData | null, filters: ReportFilters | null) => void;
 
   // Actions - Participants
-  addParticipant: (data: Omit<Participant, 'id' | 'creditPacks' | 'status' | 'createdAt' | 'totalPaid' | 'sessionDebt'>) => Promise<void>;
+  addParticipant: (data: Omit<Participant, 'id' | 'creditPacks' | 'packHistory' | 'status' | 'createdAt' | 'totalPaid' | 'sessionDebt'>) => Promise<void>;
   updateParticipant: (id: string, data: Partial<Participant>) => Promise<void>;
   hideParticipant: (id: string) => Promise<void>;
   archiveParticipant: (id: string) => Promise<void>;
@@ -51,6 +51,8 @@ interface AppState {
   updateCreditPack: (participantId: string, packId: string, data: Partial<CreditPack>) => Promise<void>;
   deleteCreditPack: (participantId: string, packId: string) => Promise<void>;
   deleteExpiredPacks: () => Promise<void>;
+  expirePack: (participantId: string, packId: string) => Promise<void>;
+  reactivatePack: (participantId: string, packId: string, newExpirationDate: string) => Promise<void>;
 
   // Actions - Sessions
   debitSessions: (participantId: string, count: number, date: string) => Promise<void>;
@@ -120,6 +122,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       id: uuidv4(),
       ...data,
       creditPacks: [],
+      packHistory: [],
       status: 'active',
       createdAt: new Date().toISOString(),
       totalPaid: 0,
@@ -184,8 +187,23 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // Credit Packs
   addCreditPack: async (participantId, packData) => {
+    const now = new Date();
     const participants = get().participants.map((p) => {
       if (p.id === participantId) {
+        // Séparer les packs actifs des packs terminés/expirés
+        const stillActive: CreditPack[] = [];
+        const toArchive: CreditPack[] = [];
+
+        p.creditPacks.forEach((pack) => {
+          const isExpired = new Date(pack.expirationDate) < now;
+          const isDepleted = pack.remainingSessions === 0;
+          if (isDepleted || isExpired) {
+            toArchive.push(pack);
+          } else {
+            stillActive.push(pack);
+          }
+        });
+
         // Si le participant a une dette, la déduire du nouveau pack
         const debt = p.sessionDebt || 0;
         const adjustedRemaining = Math.max(0, packData.remainingSessions - debt);
@@ -199,7 +217,8 @@ export const useAppStore = create<AppState>((set, get) => ({
 
         return {
           ...p,
-          creditPacks: [...p.creditPacks, pack],
+          creditPacks: [...stillActive, pack],
+          packHistory: [...(p.packHistory || []), ...toArchive],
           totalPaid: p.totalPaid + pack.totalPrice,
           sessionDebt: debt - debtReduction,
         };
@@ -214,11 +233,17 @@ export const useAppStore = create<AppState>((set, get) => ({
   updateCreditPack: async (participantId, packId, data) => {
     const participants = get().participants.map((p) => {
       if (p.id === participantId) {
+        const oldPack = p.creditPacks.find((pack) => pack.id === packId);
+        const priceDiff = data.totalPrice !== undefined && oldPack
+          ? data.totalPrice - oldPack.totalPrice
+          : 0;
+
         return {
           ...p,
           creditPacks: p.creditPacks.map((pack) =>
             pack.id === packId ? { ...pack, ...data } : pack
           ),
+          totalPaid: p.totalPaid + priceDiff,
         };
       }
       return p;
@@ -231,9 +256,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   deleteCreditPack: async (participantId, packId) => {
     const participants = get().participants.map((p) => {
       if (p.id === participantId) {
+        const packToDelete = p.creditPacks.find((pack) => pack.id === packId);
         return {
           ...p,
           creditPacks: p.creditPacks.filter((pack) => pack.id !== packId),
+          totalPaid: packToDelete ? p.totalPaid - packToDelete.totalPrice : p.totalPaid,
         };
       }
       return p;
@@ -250,14 +277,59 @@ export const useAppStore = create<AppState>((set, get) => ({
       ? settings.gracePeriodDays * 24 * 60 * 60 * 1000
       : 0;
 
-    const participants = get().participants.map((p) => ({
-      ...p,
-      creditPacks: p.creditPacks.filter((pack) => {
-        const expirationDate = new Date(pack.expirationDate);
-        const effectiveExpiration = new Date(expirationDate.getTime() + graceMs);
+    const participants = get().participants.map((p) => {
+      const expired = p.creditPacks.filter((pack) => {
+        const effectiveExpiration = new Date(new Date(pack.expirationDate).getTime() + graceMs);
+        return effectiveExpiration < now && pack.remainingSessions > 0;
+      });
+      const kept = p.creditPacks.filter((pack) => {
+        const effectiveExpiration = new Date(new Date(pack.expirationDate).getTime() + graceMs);
         return effectiveExpiration >= now || pack.remainingSessions === 0;
-      }),
-    }));
+      });
+
+      return {
+        ...p,
+        creditPacks: kept,
+        packHistory: [...(p.packHistory || []), ...expired],
+      };
+    });
+
+    set({ participants });
+    await window.api.saveParticipants(participants);
+  },
+
+  expirePack: async (participantId, packId) => {
+    const participants = get().participants.map((p) => {
+      if (p.id === participantId) {
+        const packToExpire = p.creditPacks.find((pack) => pack.id === packId);
+        if (!packToExpire) return p;
+        return {
+          ...p,
+          creditPacks: p.creditPacks.filter((pack) => pack.id !== packId),
+          packHistory: [...(p.packHistory || []), packToExpire],
+        };
+      }
+      return p;
+    });
+
+    set({ participants });
+    await window.api.saveParticipants(participants);
+  },
+
+  reactivatePack: async (participantId, packId, newExpirationDate) => {
+    const participants = get().participants.map((p) => {
+      if (p.id === participantId) {
+        const history = p.packHistory || [];
+        const packToReactivate = history.find((pack) => pack.id === packId);
+        if (!packToReactivate) return p;
+        return {
+          ...p,
+          packHistory: history.filter((pack) => pack.id !== packId),
+          creditPacks: [...p.creditPacks, { ...packToReactivate, expirationDate: newExpirationDate }],
+        };
+      }
+      return p;
+    });
 
     set({ participants });
     await window.api.saveParticipants(participants);
@@ -404,7 +476,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   updateSessionsForDate: async (participantId, date, newCount) => {
-    const { sessionsHistory, participants } = get();
+    const { sessionsHistory, participants, dateMarkers } = get();
 
     // Calculer les séances actuellement enregistrées pour cette date
     const currentRecords = sessionsHistory.filter(
@@ -415,6 +487,16 @@ export const useAppStore = create<AppState>((set, get) => ({
     const diff = newCount - currentCount;
 
     if (diff === 0) return;
+
+    // Si on ajoute des sessions, retirer automatiquement le marker "cancelled" pour cette date
+    if (newCount > 0) {
+      const marker = dateMarkers.find((m) => m.date === date);
+      if (marker?.type === 'cancelled') {
+        const updatedMarkers = dateMarkers.filter((m) => m.date !== date);
+        set({ dateMarkers: updatedMarkers });
+        await window.api.saveDateMarkers(updatedMarkers);
+      }
+    }
 
     if (diff > 0) {
       // Ajouter des séances (débiter des packs, puis créer une dette si nécessaire)

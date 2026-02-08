@@ -9,20 +9,25 @@ A desktop application for sports coaches to track participants, sessions, and ac
 ## Features
 
 - **Participant Management** - Track clients with contact info, age, and notes
-- **Session Planning** - Calendar-based scheduling with drag-and-drop
-- **Credit Packs** - Manage prepaid session packages with expiration tracking
-- **Accounting Dashboard** - Visual indicators for payment status and session usage
-- **PDF Export** - Generate reports and invoices
+- **Session Planning** - Calendar-based scheduling with recurring days and manual date markers (vacation, cancelled, sick)
+- **Credit Packs** - Manage prepaid session packages with expiration tracking (default: 10 sessions, 15€/session, 6 months validity)
+  - Color-coded status indicators (green → yellow → red) based on remaining sessions and expiration proximity
+  - Manual pack expiration and reactivation from history
+  - Automatic archival of depleted/expired packs when adding a new one
+  - Session debt tracking: negative balances carry over to the next pack
+- **Pack History** - View past expired or depleted packs per participant, with option to reactivate
+- **Accounting Dashboard** - Visual indicators for payment status and session usage (supports negative balances)
+- **Reports & Export** - Generate reports in PDF, CSV, JSON, and HTML formats
 - **Offline First** - All data stored locally, no internet required
 
 ## Download
 
-### Latest Release (v1.0.2)
+### Latest Release
 
 | Platform | Download |
 |----------|----------|
-| macOS (Intel + Apple Silicon) | [**CrunchTheNumbers-1.0.0-universal.dmg**](https://github.com/DreamEp/CrunchTheNumbers/releases/download/v1.0.2/CrunchTheNumbers-1.0.0-universal.dmg) |
-| Windows | [GitHub Actions](https://github.com/DreamEp/CrunchTheNumbers/actions) (Artifacts) |
+| macOS (Intel + Apple Silicon) | [GitHub Actions](https://github.com/DreamEp/CrunchTheNumbers/actions) (Artifacts → mac-app) |
+| Windows | [GitHub Actions](https://github.com/DreamEp/CrunchTheNumbers/actions) (Artifacts → windows-portable) |
 
 [Voir toutes les releases](https://github.com/DreamEp/CrunchTheNumbers/releases)
 
@@ -30,10 +35,11 @@ A desktop application for sports coaches to track participants, sessions, and ac
 
 ### macOS
 
-1. Download and extract `mac-app.zip`
-2. Double-click `CrunchTheNumbers-1.0.1.dmg`
-3. Drag **CrunchTheNumbers** to the **Applications** folder
-4. Launch from Applications
+1. Go to [GitHub Actions](https://github.com/DreamEp/CrunchTheNumbers/actions), click the latest successful build
+2. Download the **mac-app** artifact (zip)
+3. Extract and open the `.dmg` file
+4. Drag **CrunchTheNumbers** to the **Applications** folder
+5. Launch from Applications
 
 > **Note**: If macOS blocks the app ("unidentified developer"):
 > - Go to **System Settings** > **Privacy & Security**
@@ -41,9 +47,24 @@ A desktop application for sports coaches to track participants, sessions, and ac
 
 ### Windows
 
-1. Download and extract `windows-portable.zip`
-2. Run `CrunchTheNumbers Setup 1.0.1.exe` for installation
-   - Or use `CrunchTheNumbers 1.0.1.exe` for portable version (no install)
+1. Go to [GitHub Actions](https://github.com/DreamEp/CrunchTheNumbers/actions), click the latest successful build
+2. Download the **windows-portable** artifact (zip)
+3. Extract and run `CrunchTheNumbers Setup X.X.X.exe` for installation
+   - Or use the portable `.exe` (no install needed)
+
+## Data Persistence
+
+All data is stored locally via **electron-store** in a JSON file:
+
+| Platform | Data location |
+|----------|---------------|
+| macOS | `~/Library/Application Support/crunchthenumbers/crunchthenumbers-data.json` |
+| Windows | `%APPDATA%\crunchthenumbers\crunchthenumbers-data.json` |
+| Linux | `~/.config/crunchthenumbers/crunchthenumbers-data.json` |
+
+**Upgrading the app preserves your data** — the data file is independent of the application binary. Uninstalling and reinstalling, or replacing the `.exe`/`.dmg`, will not delete your data. The app automatically migrates data from the old `paintracker-data.json` file if present.
+
+To manually backup or migrate data, copy the `crunchthenumbers-data.json` file.
 
 ## Development
 
@@ -78,6 +99,15 @@ npm run package:mac   # macOS
 ```
 
 Output files will be in the `dist/` folder.
+
+### Build via GitHub Actions
+
+1. Push a version tag: `git tag v1.x.x && git push origin v1.x.x`
+   - Or trigger manually: GitHub repo → Actions → "Build App" → Run workflow
+2. Wait for the build to complete (~5 min)
+3. Download artifacts from the workflow run page:
+   - **mac-app** → contains `.dmg` and `.zip`
+   - **windows-portable** → contains `.exe` files
 
 ## Tech Stack
 

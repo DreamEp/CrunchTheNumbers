@@ -1,4 +1,7 @@
 import Store from 'electron-store';
+import * as fs from 'fs';
+import * as path from 'path';
+import { app } from 'electron';
 import { Participant, SessionRecord, SessionTemplate, Settings, AppData, defaultAppData, defaultSettings, DateMarker } from '../shared/types';
 
 interface StoreSchema {
@@ -13,8 +16,17 @@ interface StoreSchema {
 let store: Store<StoreSchema>;
 
 export function initStorage(): void {
+  // Migrate from old "paintracker-data" file if it exists
+  const userDataPath = app.getPath('userData');
+  const oldFile = path.join(userDataPath, 'paintracker-data.json');
+  const newFile = path.join(userDataPath, 'crunchthenumbers-data.json');
+
+  if (fs.existsSync(oldFile) && !fs.existsSync(newFile)) {
+    fs.renameSync(oldFile, newFile);
+  }
+
   store = new Store<StoreSchema>({
-    name: 'paintracker-data',
+    name: 'crunchthenumbers-data',
     defaults: {
       participants: defaultAppData.participants,
       archive: defaultAppData.archive,

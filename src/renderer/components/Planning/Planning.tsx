@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { useAppStore } from '../../stores/useAppStore';
 import { DAYS_OF_WEEK, getSessionsIndicator, getExpirationIndicator } from '../../utils/indicators';
 import {
@@ -41,12 +41,12 @@ function Planning() {
     getDateMarker,
   } = useAppStore();
 
-  // Date range state
+  // Date range state - default: 1st of previous month to end of next month
   const today = new Date();
-  const defaultEndDate = new Date(today);
-  defaultEndDate.setDate(defaultEndDate.getDate() + 28); // 4 weeks
+  const defaultStartDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+  const defaultEndDate = new Date(today.getFullYear(), today.getMonth() + 2, 0); // Last day of next month
 
-  const [startDate, setStartDate] = useState(today.toISOString().split('T')[0]);
+  const [startDate, setStartDate] = useState(defaultStartDate.toISOString().split('T')[0]);
   const [endDate, setEndDate] = useState(defaultEndDate.toISOString().split('T')[0]);
   const [viewMode, setViewMode] = useState<ViewMode>('period');
   const [pendingChanges, setPendingChanges] = useState<
@@ -190,33 +190,6 @@ function Planning() {
     const day = String(date.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
   };
-
-  // Auto-mark past dates (> 2 weeks) with no participants as cancelled
-  useEffect(() => {
-    const twoWeeksAgo = new Date();
-    twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
-    twoWeeksAgo.setHours(0, 0, 0, 0);
-
-    periodDates.forEach((date) => {
-      const dateKey = formatDateKey(date);
-
-      // Only check dates older than 2 weeks
-      if (date >= twoWeeksAgo) return;
-
-      // Skip if already has a marker
-      if (getDateMarker(dateKey)) return;
-
-      // Check if any participant has sessions on this date
-      const hasAnySession = activeParticipants.some(
-        (p) => getSessionsForDate(p.id, dateKey) > 0
-      );
-
-      // If no sessions, mark as cancelled
-      if (!hasAnySession) {
-        setDateMarker(dateKey, 'cancelled');
-      }
-    });
-  }, [periodDates, activeParticipants]);
 
   const showEmptyPeriodMessage = viewMode === 'period' && (settings.recurringDays.length === 0 || periodDates.length === 0);
   const showEmptySessionsMessage = viewMode === 'sessions' && datesWithSessions.length === 0;

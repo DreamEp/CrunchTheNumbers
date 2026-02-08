@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useAppStore } from '../../stores/useAppStore';
-import { formatDate, formatPrice } from '../../utils/indicators';
+import { formatDate, formatPrice, getSessionsIndicator, getExpirationIndicator } from '../../utils/indicators';
 import { Participant, CreditPack, ParticipantSortField } from '../../../shared/types';
 import {
   Card,
@@ -25,6 +25,7 @@ import {
 } from '../ui';
 
 type ConfigTab = 'participants' | 'credits' | 'settings';
+type PacksView = 'active' | 'history';
 
 function Config() {
   const {
@@ -37,6 +38,8 @@ function Config() {
     updateCreditPack,
     deleteCreditPack,
     deleteExpiredPacks,
+    expirePack,
+    reactivatePack,
   } = useAppStore();
 
   const [activeTab, setActiveTab] = useState<ConfigTab>('participants');
@@ -52,13 +55,17 @@ function Config() {
   const [editEmailError, setEditEmailError] = useState<string | null>(null);
 
   const todayStr = new Date().toISOString().split('T')[0];
+  const defaultExpirationDate = new Date();
+  defaultExpirationDate.setMonth(defaultExpirationDate.getMonth() + 6);
+  const expirationStr = defaultExpirationDate.toISOString().split('T')[0];
+
   const [newCredit, setNewCredit] = useState({
     participantId: '',
-    sessionCount: '',
+    sessionCount: '10',
     priceMode: 'perSession' as 'total' | 'perSession',
-    price: '',
+    price: '15',
     startDate: todayStr,
-    expirationDate: '',
+    expirationDate: expirationStr,
   });
 
   const [editingParticipant, setEditingParticipant] = useState<Participant | null>(null);
@@ -71,6 +78,12 @@ function Config() {
     pack: CreditPack;
   } | null>(null);
   const [showDeleteExpiredConfirm, setShowDeleteExpiredConfirm] = useState(false);
+  const [packsView, setPacksView] = useState<PacksView>('active');
+  const [reactivatingPack, setReactivatingPack] = useState<{
+    participantId: string;
+    pack: CreditPack;
+    newExpirationDate: string;
+  } | null>(null);
 
   // Email validation helper
   const isValidEmail = (email: string): boolean => {
@@ -149,13 +162,16 @@ function Config() {
     });
 
     const newTodayStr = new Date().toISOString().split('T')[0];
+    const newExpirationDate = new Date();
+    newExpirationDate.setMonth(newExpirationDate.getMonth() + 6);
+    const newExpirationStr = newExpirationDate.toISOString().split('T')[0];
     setNewCredit({
       participantId: '',
-      sessionCount: '',
+      sessionCount: '10',
       priceMode: 'perSession',
-      price: '',
+      price: '15',
       startDate: newTodayStr,
-      expirationDate: '',
+      expirationDate: newExpirationStr,
     });
   };
 
@@ -531,95 +547,239 @@ function Config() {
           {/* Packs list by participant */}
           <Card noPadding>
             <CardHeader>
-              <CardTitle>📦 Packs de séances par participant</CardTitle>
-            </CardHeader>
-            {activeParticipants.length === 0 ? (
-              <EmptyState icon="📦" message="Aucun participant avec des packs." />
-            ) : (
-              <div className="divide-y divide-border">
-                {sortedActiveParticipants.map((participant) => (
-                  <div key={participant.id} className="px-6 py-5">
-                    <h4 className="font-medium text-text mb-3">
-                      {participant.firstName} {participant.lastName.toUpperCase()}
-                    </h4>
-                    {participant.creditPacks.length === 0 ? (
-                      <p className="text-sm italic text-muted">
-                        Aucun pack actif
-                      </p>
-                    ) : (
-                      <div className="space-y-2">
-                        {participant.creditPacks.map((pack) => {
-                          const isExpired = new Date(pack.expirationDate) < new Date();
-                          return (
-                            <div
-                              key={pack.id}
-                              className={`flex flex-wrap items-center justify-between gap-3 px-4 py-3 rounded-lg border ${
-                                isExpired
-                                  ? 'bg-red/10 border-red/30'
-                                  : 'bg-overlay border-border'
-                              }`}
-                            >
-                              <div className="flex flex-wrap items-center gap-3">
-                                <span className="text-sm font-medium">
-                                  <span className="text-accent">
-                                    {pack.remainingSessions}
-                                  </span>
-                                  /{pack.sessionCount} séances
-                                </span>
-                                <span className="text-sm text-subtext">
-                                  {formatPrice(pack.totalPrice)}
-                                </span>
-                                <span
-                                  className={`text-sm ${
-                                    isExpired ? 'text-red' : 'text-muted'
-                                  }`}
-                                >
-                                  {isExpired ? '⚠️ Expiré le' : 'Expire le'} {formatDate(pack.expirationDate)}
-                                </span>
-                              </div>
-                              <div className="flex gap-2">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() =>
-                                    setEditingPackStart({
-                                      participantId: participant.id,
-                                      pack,
-                                    })
-                                  }
-                                >
-                                  ✏️ Début
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() =>
-                                    setEditingPack({
-                                      participantId: participant.id,
-                                      pack,
-                                    })
-                                  }
-                                >
-                                  📅 Prolonger
-                                </Button>
-                                <Button
-                                  variant="danger"
-                                  size="sm"
-                                  onClick={() =>
-                                    deleteCreditPack(participant.id, pack.id)
-                                  }
-                                >
-                                  🗑️
-                                </Button>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                ))}
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <CardTitle>📦 Packs de séances par participant</CardTitle>
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    variant={packsView === 'active' ? 'primary' : 'secondary'}
+                    onClick={() => setPacksView('active')}
+                  >
+                    En cours
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={packsView === 'history' ? 'primary' : 'secondary'}
+                    onClick={() => setPacksView('history')}
+                  >
+                    Historique
+                  </Button>
+                </div>
               </div>
+            </CardHeader>
+
+            {packsView === 'active' && (
+              activeParticipants.length === 0 ? (
+                <EmptyState icon="📦" message="Aucun participant avec des packs." />
+              ) : (
+                <div className="divide-y divide-border">
+                  {sortedActiveParticipants.map((participant) => {
+                    const activePacks = participant.creditPacks.filter(
+                      (pack) => pack.remainingSessions > 0
+                    );
+                    return (
+                      <div key={participant.id} className="px-6 py-5">
+                        <h4 className="font-medium text-text mb-3">
+                          {participant.firstName} {participant.lastName.toUpperCase()}
+                        </h4>
+                        {activePacks.length === 0 ? (
+                          <p className="text-sm italic text-muted">
+                            Aucun pack actif
+                          </p>
+                        ) : (
+                          <div className="space-y-2">
+                            {activePacks.map((pack) => {
+                              const isExpired = new Date(pack.expirationDate) < new Date();
+                              const sessionsIndicator = getSessionsIndicator(pack.remainingSessions);
+                              const expirationIndicator = getExpirationIndicator(pack.expirationDate);
+
+                              // Determine border/background color from worst indicator
+                              const isUrgent = sessionsIndicator.pulse || expirationIndicator.pulse || isExpired;
+                              const isWarning = !isUrgent && (
+                                sessionsIndicator.variant === 'warning' || expirationIndicator.variant === 'warning'
+                              );
+                              const isDanger = !isUrgent && (
+                                sessionsIndicator.variant === 'danger' || expirationIndicator.variant === 'danger'
+                              );
+
+                              const borderClass = isUrgent
+                                ? 'bg-red/15 border-red/40'
+                                : isDanger
+                                ? 'bg-red/10 border-red/30'
+                                : isWarning
+                                ? 'bg-yellow/10 border-yellow/30'
+                                : 'bg-overlay border-border';
+
+                              return (
+                                <div
+                                  key={pack.id}
+                                  className={`flex flex-wrap items-center justify-between gap-3 px-4 py-3 rounded-lg border ${borderClass}`}
+                                >
+                                  <div className="flex flex-wrap items-center gap-3">
+                                    <span className="text-sm font-medium">
+                                      <span className={
+                                        sessionsIndicator.variant === 'danger' || sessionsIndicator.variant === 'negative'
+                                          ? 'text-red'
+                                          : sessionsIndicator.variant === 'warning'
+                                          ? 'text-yellow'
+                                          : 'text-accent'
+                                      }>
+                                        {pack.remainingSessions}
+                                      </span>
+                                      /{pack.sessionCount} séances
+                                    </span>
+                                    <span className="text-sm text-subtext">
+                                      {formatPrice(pack.totalPrice)}
+                                    </span>
+                                    <span className={`text-sm ${isExpired ? 'text-red font-medium' : expirationIndicator.variant === 'danger' ? 'text-red' : expirationIndicator.variant === 'warning' ? 'text-yellow' : 'text-muted'}`}>
+                                      {isExpired ? '⚠️ Expiré le' : 'Expire le'} {formatDate(pack.expirationDate)}
+                                    </span>
+                                  </div>
+                                  <div className="flex gap-2">
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() =>
+                                        setEditingPackStart({
+                                          participantId: participant.id,
+                                          pack,
+                                        })
+                                      }
+                                    >
+                                      ✏️ Début
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() =>
+                                        setEditingPack({
+                                          participantId: participant.id,
+                                          pack,
+                                        })
+                                      }
+                                    >
+                                      📅 Prolonger
+                                    </Button>
+                                    <Button
+                                      variant="secondary"
+                                      size="sm"
+                                      onClick={() =>
+                                        expirePack(participant.id, pack.id)
+                                      }
+                                    >
+                                      ⏹️ Expirer
+                                    </Button>
+                                    <Button
+                                      variant="danger"
+                                      size="sm"
+                                      onClick={() =>
+                                        deleteCreditPack(participant.id, pack.id)
+                                      }
+                                    >
+                                      🗑️
+                                    </Button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )
+            )}
+
+            {packsView === 'history' && (
+              activeParticipants.length === 0 ? (
+                <EmptyState icon="📦" message="Aucun participant." />
+              ) : (
+                <div className="divide-y divide-border">
+                  {sortedActiveParticipants.map((participant) => {
+                    const depletedPacks = participant.creditPacks.filter(
+                      (pack) => pack.remainingSessions === 0
+                    );
+                    const historyPacks = [
+                      ...depletedPacks.map((pack) => ({ ...pack, _source: 'creditPacks' as const })),
+                      ...(participant.packHistory || []).map((pack) => ({ ...pack, _source: 'packHistory' as const })),
+                    ].sort((a, b) => new Date(b.expirationDate).getTime() - new Date(a.expirationDate).getTime());
+
+                    return (
+                      <div key={participant.id} className="px-6 py-5">
+                        <h4 className="font-medium text-text mb-3">
+                          {participant.firstName} {participant.lastName.toUpperCase()}
+                        </h4>
+                        {historyPacks.length === 0 ? (
+                          <p className="text-sm italic text-muted">
+                            Aucun historique
+                          </p>
+                        ) : (
+                          <div className="space-y-2">
+                            {historyPacks.map((pack) => {
+                              const isExpired = new Date(pack.expirationDate) < new Date();
+                              const isDepleted = pack.remainingSessions === 0;
+                              const isInHistory = pack._source === 'packHistory';
+                              return (
+                                <div
+                                  key={pack.id}
+                                  className={`flex flex-wrap items-center justify-between gap-3 px-4 py-3 rounded-lg border ${
+                                    isExpired && !isDepleted
+                                      ? 'bg-red/10 border-red/30'
+                                      : 'bg-overlay border-border'
+                                  } opacity-75`}
+                                >
+                                  <div className="flex flex-wrap items-center gap-3">
+                                    <span className="text-sm font-medium">
+                                      <span className="text-accent">
+                                        {pack.remainingSessions}
+                                      </span>
+                                      /{pack.sessionCount} séances
+                                    </span>
+                                    <span className="text-sm text-subtext">
+                                      {formatPrice(pack.totalPrice)}
+                                    </span>
+                                    <span className="text-sm text-muted">
+                                      {formatDate(pack.purchaseDate)} → {formatDate(pack.expirationDate)}
+                                    </span>
+                                    {isDepleted && (
+                                      <span className="text-xs px-2 py-0.5 rounded-full bg-accent/20 text-accent">
+                                        Terminé
+                                      </span>
+                                    )}
+                                    {isExpired && !isDepleted && (
+                                      <span className="text-xs px-2 py-0.5 rounded-full bg-red/20 text-red">
+                                        Expiré
+                                      </span>
+                                    )}
+                                  </div>
+                                  {isInHistory && pack.remainingSessions > 0 && (
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => {
+                                        const newExp = new Date();
+                                        newExp.setMonth(newExp.getMonth() + 6);
+                                        setReactivatingPack({
+                                          participantId: participant.id,
+                                          pack,
+                                          newExpirationDate: newExp.toISOString().split('T')[0],
+                                        });
+                                      }}
+                                    >
+                                      📅 Réactiver
+                                    </Button>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )
             )}
           </Card>
         </div>
@@ -906,6 +1066,51 @@ function Config() {
             }}
           >
             Supprimer
+          </Button>
+        </ModalActions>
+      </Modal>
+
+      {/* Modal réactivation pack */}
+      <Modal
+        open={!!reactivatingPack}
+        onClose={() => setReactivatingPack(null)}
+      >
+        <ModalTitle>📅 Réactiver le pack</ModalTitle>
+        <ModalDescription>
+          Ce pack sera remis dans les packs actifs avec la nouvelle date d'expiration.
+        </ModalDescription>
+        <FormGroup>
+          <Label>Nouvelle date de fin de validité</Label>
+          <Input
+            type="date"
+            value={reactivatingPack?.newExpirationDate || ''}
+            min={new Date().toISOString().split('T')[0]}
+            onChange={(e) =>
+              setReactivatingPack((prev) =>
+                prev ? { ...prev, newExpirationDate: e.target.value } : null
+              )
+            }
+            className="w-auto"
+          />
+        </FormGroup>
+        <ModalActions>
+          <Button variant="secondary" onClick={() => setReactivatingPack(null)}>
+            Annuler
+          </Button>
+          <Button
+            variant="primary"
+            onClick={() => {
+              if (reactivatingPack) {
+                reactivatePack(
+                  reactivatingPack.participantId,
+                  reactivatingPack.pack.id,
+                  new Date(reactivatingPack.newExpirationDate).toISOString()
+                );
+                setReactivatingPack(null);
+              }
+            }}
+          >
+            Réactiver
           </Button>
         </ModalActions>
       </Modal>

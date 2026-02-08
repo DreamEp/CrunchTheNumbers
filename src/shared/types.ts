@@ -8,6 +8,7 @@ export interface Participant {
   age?: number;
   notes?: string;
   creditPacks: CreditPack[];
+  packHistory: CreditPack[];
   status: 'active' | 'hidden' | 'archived';
   createdAt: string;
   totalPaid: number;
